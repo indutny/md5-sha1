@@ -103,7 +103,7 @@ static NAN_METHOD(Verify) {
       !Buffer::HasInstance(args[1]) ||
       !Buffer::HasInstance(args[2])) {
     return NanThrowError("Invalid arguments length, "
-                         "expected sign(input, signature, key)");
+                         "expected verify(input, signature, key)");
   }
 
   RSA* pkey = GetPKey(Buffer::Data(args[2]), Buffer::Length(args[2]));

@@ -1,5 +1,6 @@
 var assert = require('assert');
 var ms = require('../');
+var crypto = require('crypto');
 
 var key = require('fs').readFileSync(__dirname + '/keys/key.pem');
 
@@ -15,5 +16,15 @@ describe('md5sha1', function() {
     var s = ms.sign(right, key);
     assert(ms.verify(right, s, key));
     assert(!ms.verify(wrong, s, key));
+  });
+
+  it('should digest', function() {
+    var d = new ms.Digest();
+    var out = new Buffer(36);
+    d.update(new Buffer('hello world')).digest(out);
+
+    var md5 = crypto.createHash('md5').update('hello world').digest('hex');
+    var sha1 = crypto.createHash('sha1').update('hello world').digest('hex');
+    assert.equal(out.toString('hex'), md5 + sha1);
   });
 });

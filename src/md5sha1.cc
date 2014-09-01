@@ -5,6 +5,7 @@
 #include "openssl/rsa.h"
 #include "openssl/pem.h"
 #include "openssl/x509.h"
+#include "openssl/evp.h"
 #include "v8.h"
 
 #include <string.h>
@@ -122,6 +123,102 @@ static NAN_METHOD(Verify) {
 }
 
 
+class Digest : public ObjectWrap {
+ public:
+  static void Init(Handle<Object> target) {
+    Local<FunctionTemplate> t = NanNew<FunctionTemplate>(Digest::New);
+
+    t->InstanceTemplate()->SetInternalFieldCount(1);
+    t->SetClassName(NanNew<String>("Digest"));
+
+    NODE_SET_PROTOTYPE_METHOD(t, "update", Digest::Update);
+    NODE_SET_PROTOTYPE_METHOD(t, "digest", Digest::Final);
+
+    target->Set(NanNew<String>("Digest"), t->GetFunction());
+  }
+
+ protected:
+  Digest() {
+    EVP_MD_CTX_init(&md5_);
+    EVP_MD_CTX_init(&sha1_);
+
+    int r;
+    r = EVP_DigestInit_ex(&md5_, EVP_md5(), NULL);
+    assert(r);
+    r = EVP_DigestInit_ex(&sha1_, EVP_sha1(), NULL);
+    assert(r);
+  }
+
+  ~Digest() {
+    EVP_MD_CTX_cleanup(&md5_);
+    EVP_MD_CTX_cleanup(&sha1_);
+  }
+
+  static NAN_METHOD(New) {
+    NanScope();
+
+    Digest* d = new Digest();
+    d->Wrap(args.This());
+
+    NanReturnValue(args.This());
+  }
+
+  static NAN_METHOD(Update) {
+    NanScope();
+
+    Digest* d = ObjectWrap::Unwrap<Digest>(args.This());
+    if (args.Length() < 1 || !Buffer::HasInstance(args[0]))
+      return NanThrowError("Invalid arguments length, expected update(data)");
+
+    char* data = Buffer::Data(args[0]);
+    int len = Buffer::Length(args[0]);
+
+    int r;
+    r = EVP_DigestUpdate(&d->md5_, data, len);
+    if (r)
+      r = EVP_DigestUpdate(&d->sha1_, data, len);
+
+    if (!r)
+      return NanThrowError("Failed to update digest");
+
+    NanReturnValue(args.This());
+  }
+
+  static NAN_METHOD(Final) {
+    NanScope();
+
+    Digest* d = ObjectWrap::Unwrap<Digest>(args.This());
+    if (args.Length() < 1 || !Buffer::HasInstance(args[0]))
+      return NanThrowError("Invalid arguments length, expected update(data)");
+
+    unsigned char* out =
+        reinterpret_cast<unsigned char*>(Buffer::Data(args[0]));
+    int len = Buffer::Length(args[0]);
+
+    if (len != 36)
+      return NanThrowError("Invalid output length");
+
+    unsigned int s;
+    int r;
+
+    s = 16;
+    r = EVP_DigestFinal_ex(&d->md5_, out, &s);
+    if (!r || s != 16)
+      return NanThrowError("DigestFinal md5 failed");
+
+    s = 20;
+    r = EVP_DigestFinal_ex(&d->sha1_, out + 16, &s);
+    if (!r || s != 20)
+      return NanThrowError("DigestFinal sha1 failed");
+
+    NanReturnValue(args[0]);
+  }
+
+  EVP_MD_CTX md5_;
+  EVP_MD_CTX sha1_;
+};
+
+
 static void Init(Handle<Object> target) {
   // Init OpenSSL
   OpenSSL_add_all_algorithms();
@@ -129,6 +226,7 @@ static void Init(Handle<Object> target) {
   NODE_SET_METHOD(target, "sign", Sign);
   NODE_SET_METHOD(target, "verify", Verify);
 
+  Digest::Init(target);
 }
 
 NODE_MODULE(md5sha1, Init);

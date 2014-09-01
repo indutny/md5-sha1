@@ -1,6 +1,6 @@
 {
   "name": "md5-sha1",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Raw OpenSSL NID_md5_sha1 RSA wrapper",
   "main": "index.js",
   "scripts": {

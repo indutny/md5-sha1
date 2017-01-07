@@ -62,79 +62,76 @@ static RSA* GetPKey(char* data, size_t len) {
 
 
 static NAN_METHOD(Sign) {
-  NanScope();
-
-  if (args.Length() != 2 ||
-      !Buffer::HasInstance(args[0]) ||
-      !Buffer::HasInstance(args[1])) {
-    return NanThrowError("Invalid arguments length, expected sign(input, key)");
+  if (info.Length() != 2 ||
+      !Buffer::HasInstance(info[0]) ||
+      !Buffer::HasInstance(info[1])) {
+    return Nan::ThrowError(
+        "Invalid arguments length, expected sign(input, key)");
   }
 
-  RSA* pkey = GetPKey(Buffer::Data(args[1]), Buffer::Length(args[1]));
+  RSA* pkey = GetPKey(Buffer::Data(info[1]), Buffer::Length(info[1]));
   if (pkey == NULL)
-    return NanThrowError("Invalid key, failed to parse public/private key");
+    return Nan::ThrowError("Invalid key, failed to parse public/private key");
 
   unsigned int out_len = RSA_size(pkey);
   unsigned char* out = new unsigned char[out_len];
 
   int r = RSA_sign(NID_md5_sha1,
-                   reinterpret_cast<unsigned char*>(Buffer::Data(args[0])),
-                   Buffer::Length(args[0]),
+                   reinterpret_cast<unsigned char*>(Buffer::Data(info[0])),
+                   Buffer::Length(info[0]),
                    out,
                    &out_len,
                    pkey);
   RSA_free(pkey);
   if (!r) {
     delete[] out;
-    return NanThrowError("Failed to sign");
+    return Nan::ThrowError("Failed to sign");
   }
 
-  Local<Value> res = NanNewBufferHandle(reinterpret_cast<char*>(out), out_len);
-  delete[] out;
+  Local<Value> res = Nan::NewBuffer(reinterpret_cast<char*>(out), out_len)
+      .ToLocalChecked();
 
-  NanReturnValue(res);
+  info.GetReturnValue().Set(res);
 }
 
 
 static NAN_METHOD(Verify) {
-  NanScope();
-
-  if (args.Length() != 3 ||
-      !Buffer::HasInstance(args[0]) ||
-      !Buffer::HasInstance(args[1]) ||
-      !Buffer::HasInstance(args[2])) {
-    return NanThrowError("Invalid arguments length, "
-                         "expected verify(input, signature, key)");
+  if (info.Length() != 3 ||
+      !Buffer::HasInstance(info[0]) ||
+      !Buffer::HasInstance(info[1]) ||
+      !Buffer::HasInstance(info[2])) {
+    return Nan::ThrowError("Invalid arguments length, "
+                           "expected verify(input, signature, key)");
   }
 
-  RSA* pkey = GetPKey(Buffer::Data(args[2]), Buffer::Length(args[2]));
+  RSA* pkey = GetPKey(Buffer::Data(info[2]), Buffer::Length(info[2]));
   if (pkey == NULL)
-    return NanThrowError("Invalid key, failed to parse public/private key");
+    return Nan::ThrowError("Invalid key, failed to parse public/private key");
 
   int r = RSA_verify(NID_md5_sha1,
-                     reinterpret_cast<unsigned char*>(Buffer::Data(args[0])),
-                     Buffer::Length(args[0]),
-                     reinterpret_cast<unsigned char*>(Buffer::Data(args[1])),
-                     Buffer::Length(args[1]),
+                     reinterpret_cast<unsigned char*>(Buffer::Data(info[0])),
+                     Buffer::Length(info[0]),
+                     reinterpret_cast<unsigned char*>(Buffer::Data(info[1])),
+                     Buffer::Length(info[1]),
                      pkey);
   RSA_free(pkey);
 
-  NanReturnValue(r ? NanTrue() : NanFalse());
+  info.GetReturnValue().Set(r ? Nan::True() : Nan::False());
 }
 
 
 class Digest : public ObjectWrap {
  public:
   static void Init(Handle<Object> target) {
-    Local<FunctionTemplate> t = NanNew<FunctionTemplate>(Digest::New);
+    Local<FunctionTemplate> t = Nan::New<FunctionTemplate>(Digest::New);
 
     t->InstanceTemplate()->SetInternalFieldCount(1);
-    t->SetClassName(NanNew<String>("Digest"));
+    t->SetClassName(Nan::New("Digest").ToLocalChecked());
 
-    NODE_SET_PROTOTYPE_METHOD(t, "update", Digest::Update);
-    NODE_SET_PROTOTYPE_METHOD(t, "digest", Digest::Final);
+    Nan::SetPrototypeMethod(t, "update", Digest::Update);
+    Nan::SetPrototypeMethod(t, "digest", Digest::Final);
 
-    target->Set(NanNew<String>("Digest"), t->GetFunction());
+    target->Set(Nan::New("Digest").ToLocalChecked(), t->GetFunction());
   }
 
  protected:
@@ -155,23 +152,19 @@ class Digest : public ObjectWrap {
   }
 
   static NAN_METHOD(New) {
-    NanScope();
-
     Digest* d = new Digest();
-    d->Wrap(args.This());
+    d->Wrap(info.This());
 
-    NanReturnValue(args.This());
+    info.GetReturnValue().Set(info.This());
   }
 
   static NAN_METHOD(Update) {
-    NanScope();
+    Digest* d = ObjectWrap::Unwrap<Digest>(info.This());
+    if (info.Length() < 1 || !Buffer::HasInstance(info[0]))
+      return Nan::ThrowError("Invalid arguments length, expected update(data)");
 
-    Digest* d = ObjectWrap::Unwrap<Digest>(args.This());
-    if (args.Length() < 1 || !Buffer::HasInstance(args[0]))
-      return NanThrowError("Invalid arguments length, expected update(data)");
-
-    char* data = Buffer::Data(args[0]);
-    int len = Buffer::Length(args[0]);
+    char* data = Buffer::Data(info[0]);
+    int len = Buffer::Length(info[0]);
 
     int r;
     r = EVP_DigestUpdate(&d->md5_, data, len);
@@ -179,24 +172,22 @@ class Digest : public ObjectWrap {
       r = EVP_DigestUpdate(&d->sha1_, data, len);
 
     if (!r)
-      return NanThrowError("Failed to update digest");
+      return Nan::ThrowError("Failed to update digest");
 
-    NanReturnValue(args.This());
+    info.GetReturnValue().Set(info.This());
   }
 
   static NAN_METHOD(Final) {
-    NanScope();
-
-    Digest* d = ObjectWrap::Unwrap<Digest>(args.This());
-    if (args.Length() < 1 || !Buffer::HasInstance(args[0]))
-      return NanThrowError("Invalid arguments length, expected update(data)");
+    Digest* d = ObjectWrap::Unwrap<Digest>(info.This());
+    if (info.Length() < 1 || !Buffer::HasInstance(info[0]))
+      return Nan::ThrowError("Invalid arguments length, expected update(data)");
 
     unsigned char* out =
-        reinterpret_cast<unsigned char*>(Buffer::Data(args[0]));
-    int len = Buffer::Length(args[0]);
+        reinterpret_cast<unsigned char*>(Buffer::Data(info[0]));
+    int len = Buffer::Length(info[0]);
 
     if (len != 36)
-      return NanThrowError("Invalid output length");
+      return Nan::ThrowError("Invalid output length");
 
     unsigned int s;
     int r;
@@ -204,14 +195,14 @@ class Digest : public ObjectWrap {
     s = 16;
     r = EVP_DigestFinal_ex(&d->md5_, out, &s);
     if (!r || s != 16)
-      return NanThrowError("DigestFinal md5 failed");
+      return Nan::ThrowError("DigestFinal md5 failed");
 
     s = 20;
     r = EVP_DigestFinal_ex(&d->sha1_, out + 16, &s);
     if (!r || s != 20)
-      return NanThrowError("DigestFinal sha1 failed");
+      return Nan::ThrowError("DigestFinal sha1 failed");
 
-    NanReturnValue(args[0]);
+    info.GetReturnValue().Set(info[0]);
   }
 
   EVP_MD_CTX md5_;
@@ -223,8 +214,8 @@ static void Init(Handle<Object> target) {
   // Init OpenSSL
   OpenSSL_add_all_algorithms();
 
-  NODE_SET_METHOD(target, "sign", Sign);
-  NODE_SET_METHOD(target, "verify", Verify);
+  Nan::SetMethod(target, "sign", Sign);
+  Nan::SetMethod(target, "verify", Verify);
 
   Digest::Init(target);
 }
